@@ -113,13 +113,48 @@ def generate_half_open_channel() -> Incident:
         events=events,
     )    
 
+def generate_empty_upstream_file() -> Incident:
+    """A batch job reports success — but processed nothing, because the input was empty."""
+    start = datetime(2026, 5, 20, 3, 0, 0)
+
+    events = [
+        LogEvent(
+            timestamp=start,
+            source="order-broker-batch",
+            severity=Severity.INFO,
+            message="Job starting...",  # job starting
+        ),
+        LogEvent(
+            timestamp=start + timedelta(seconds=0),
+            source="order-broker-batch",
+            severity=Severity.INFO,  # ← the trap: it thinks it succeeded
+            message="Job completed successfully but 0 records/0 duration",
+        ),
+        LogEvent(
+            timestamp=start + timedelta(hours=2),
+            source="datalake-etl",  # some downstream system
+            severity=Severity.INFO,
+            message="order is missing",  # the consequence: something is missing
+        ),
+    ]
+    return Incident(
+        root_cause="empty_upstream_file",
+        narrative=(
+            "The order-broker batch job reported success but the processed nothing because "
+            "the upstream file was empty. Zero record count and zero duration are the only "
+            "evidence. There is no error"
+        ),
+        events=events,
+    )
+
 ALL_GENERATORS = [
     generate_infra_shutdown,
     generate_half_open_channel,
+    generate_empty_upstream_file,
 ]
 
 
 def random_incident() -> Incident:
     """Generate one incident of a randomly chosen type."""
     generator = random.choice(ALL_GENERATORS)
-    return generator()    
+    return generator()   
