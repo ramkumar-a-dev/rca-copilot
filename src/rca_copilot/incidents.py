@@ -146,11 +146,44 @@ def generate_empty_upstream_file() -> Incident:
         ),
         events=events,
     )
+def generate_order_state_divergence() -> Incident:
+    """Two systems disagree about an order's state. A sync failed silently."""
+    order_id = f"BOPIS-{random.randint(100000, 999999)}"
+    start = datetime(2026, 6, 8, 16, 45, 0)
 
+    events = [
+        LogEvent(
+            timestamp=start,
+            source="order-broker",
+            severity=Severity.INFO,
+            message=f"Order {order_id} marked FULFILLED",
+        ),
+        LogEvent(
+            timestamp=start + timedelta(seconds=2),
+            source="order-broker-Xcenter-replication",
+            severity=Severity.WARN,
+            message="Order status sync with Xcenter replication failed",
+        ),
+        LogEvent(
+            timestamp=start + timedelta(seconds=10),
+            source="xstore-pos",
+            severity=Severity.INFO,
+            message=f"Order {order_id} status: PENDING",
+        ),
+    ]
+    return Incident(
+        root_cause="order_state_divergence",
+        narrative=(
+            "order-broker and xstore disagree on the same order because "
+            "a sync failed. Neither errors. The contradiction is the evidence. "
+        ),
+        events=events,
+    )
 ALL_GENERATORS = [
     generate_infra_shutdown,
     generate_half_open_channel,
     generate_empty_upstream_file,
+    generate_order_state_divergence,
 ]
 
 
