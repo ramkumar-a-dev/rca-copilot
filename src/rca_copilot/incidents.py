@@ -179,11 +179,52 @@ def generate_order_state_divergence() -> Incident:
         ),
         events=events,
     )
+def generate_connection_pool_exhaustion() -> Incident:
+    """The WebLogic connection pool hits its ceiling; requests cascade into timeouts."""
+    start = datetime(2026, 6, 22, 12, 0, 0)
+
+    events = [
+        LogEvent(
+            timestamp=start,
+            source="weblogic-ms1",
+            severity=Severity.WARN,
+            message="Connections are running high 18/20 connections exhausted",
+        ),
+        LogEvent(
+            timestamp=start + timedelta(seconds=10),
+            source="weblogic-ms1",
+            severity=Severity.ERROR,
+            message="Connections pool exhausted, 20/20 in use, no connections available",
+        ),
+        LogEvent(
+            timestamp=start + timedelta(seconds=15),
+            source=f"xstore-pos-{random.randint(1, 2700):04d}",
+            severity=Severity.ERROR,
+            message="Socket timeout exception: Could not acquire DB Connection",
+        ),
+        LogEvent(
+            timestamp=start + timedelta(seconds=16),
+            source=f"xstore-pos-{random.randint(1, 2700):04d}",
+            severity=Severity.ERROR,
+            message="Socket timeout exception: Could not acquire DB Connection",
+        ),
+    ]
+
+    return Incident(
+        root_cause="connection_pool_exhaustion",
+        narrative=(
+            "The WebLogic connection pool reached its maximum of 20 connections. "
+            "The socket timeouts across multiple stores are all downstream of that "
+            "single ceiling event — the store errors are symptoms, not the cause."
+        ),
+        events=events,
+    )    
 ALL_GENERATORS = [
     generate_infra_shutdown,
     generate_half_open_channel,
     generate_empty_upstream_file,
     generate_order_state_divergence,
+    generate_connection_pool_exhaustion
 ]
 
 
