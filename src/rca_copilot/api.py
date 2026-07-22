@@ -21,6 +21,20 @@ class GenerateResponse(BaseModel):
     count: int
     incidents: list[dict[str, object]]
 
+class DiagnoseRequest(BaseModel):
+    """A bundle of log lines to diagnose."""
+
+    events: list[str] = Field(min_length=1)
+
+
+class DiagnoseResponse(BaseModel):
+    """A proposed root cause with cited evidence."""
+
+    root_cause: str
+    confidence: str
+    evidence: list[str]
+    reasoning: str
+
 
 @app.get("/health")
 def health() -> dict[str, str]:
@@ -33,3 +47,13 @@ def create_incidents(request: GenerateRequest) -> GenerateResponse:
     """Generate a batch of synthetic incidents."""
     incidents = [incident_to_dict(random_incident()) for _ in range(request.count)]
     return GenerateResponse(count=len(incidents), incidents=incidents)
+
+@app.post("/diagnose")
+def diagnose(request: DiagnoseRequest) -> DiagnoseResponse:
+    """Propose a root cause for a bundle of log events. Not yet implemented."""
+    return DiagnoseResponse(
+        root_cause="insufficient_evidence",
+        confidence="low",
+        evidence=[],
+        reasoning="Diagnosis is not yet implemented. This endpoint returns a stub.",
+    )
