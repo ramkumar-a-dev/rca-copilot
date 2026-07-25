@@ -40,3 +40,4 @@ def test_diagnose_returns_a_structured_response() -> None:
 def test_diagnose_rejects_empty_events() -> None:
     response = client.post("/diagnose", json={"events": []})
     assert response.status_code == 422
+
