@@ -1,5 +1,7 @@
 """Database connection and session management."""
 
+import os
+
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from rca_copilot.cli import incident_to_dict
@@ -8,7 +10,11 @@ from rca_copilot.models_db import Base, IncidentRow
 
 # The connection string: driver + credentials + host + database name
 # Format: postgresql+asyncpg://USER:PASSWORD@HOST:PORT/DATABASE
-DATABASE_URL = "postgresql+asyncpg://rca:rca_dev_password@localhost:5432/rca_copilot"
+
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql+asyncpg://rca:rca_dev_password@localhost:5432/rca_copilot",
+)
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 
