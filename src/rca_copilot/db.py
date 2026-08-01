@@ -1,6 +1,7 @@
 """Database connection and session management."""
 
 import os
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -11,9 +12,34 @@ from rca_copilot.models_db import Base, IncidentRow
 # The connection string: driver + credentials + host + database name
 # Format: postgresql+asyncpg://USER:PASSWORD@HOST:PORT/DATABASE
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql+asyncpg://rca:rca_dev_password@localhost:5432/rca_copilot",
+# Managed platforms (Railway, Heroku, etc.) hand out a *sync* URL:
+#   postgres://...  or  postgresql://...
+# and sometimes append psycopg-only params like ?sslmode=require.
+# SQLAlchemy's async engine needs the postgresql+asyncpg:// scheme, and
+# asyncpg rejects sslmode/channel_binding query params. Normalize both.
+_ASYNCPG_INCOMPATIBLE_PARAMS = {"sslmode", "channel_binding"}
+
+
+def _normalize_async_url(url: str) -> str:
+    parts = urlsplit(url)
+    scheme = parts.scheme
+    if scheme in ("postgres", "postgresql"):
+        scheme = "postgresql+asyncpg"
+    kept: list[tuple[str, str]] = [
+        (key, value)
+        for key, value in parse_qsl(parts.query)
+        if key not in _ASYNCPG_INCOMPATIBLE_PARAMS
+    ]
+    return urlunsplit(
+        (scheme, parts.netloc, parts.path, urlencode(kept), parts.fragment)
+    )
+
+
+DATABASE_URL = _normalize_async_url(
+    os.environ.get(
+        "DATABASE_URL",
+        "postgresql+asyncpg://rca:rca_dev_password@localhost:5432/rca_copilot",
+    )
 )
 
 engine = create_async_engine(DATABASE_URL, echo=False)

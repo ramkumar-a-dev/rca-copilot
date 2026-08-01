@@ -30,8 +30,10 @@ COPY --from=builder /app/src /app/src
 # Put the venv's tools on the PATH
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Document the port the service listens on
+# Document the port the service listens on (local default)
 EXPOSE 8000
 
-# The command that runs when the container starts
-CMD ["uvicorn", "rca_copilot.api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Bind to the platform-provided $PORT when present (Railway/Render/Cloud Run
+# all inject it), falling back to 8000 for local `docker run`. Shell form is
+# required so ${PORT} expands — exec form would pass it as a literal string.
+CMD uvicorn rca_copilot.api:app --host 0.0.0.0 --port ${PORT:-8000}
