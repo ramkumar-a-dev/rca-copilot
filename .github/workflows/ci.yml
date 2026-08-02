@@ -5,6 +5,25 @@ on: [push, pull_request]
 jobs:
   check:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rca
+          POSTGRES_PASSWORD: rca_dev_password
+          POSTGRES_DB: rca_copilot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rca"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://rca:rca_dev_password@localhost:5432/rca_copilot
+
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
