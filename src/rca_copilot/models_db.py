@@ -20,3 +20,8 @@ class IncidentRow(Base):
     root_cause: Mapped[str] = mapped_column(String(100), index=True)
     narrative: Mapped[str] = mapped_column(String)
     events: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+
+    # Flattened, searchable text (see retrieval.flatten_events). Populated by the
+    # app on write; the FTS index (search_vector) is derived from it in Postgres.
+    # Nullable so existing rows can be backfilled before the value is set.
+    search_text: Mapped[str | None] = mapped_column(String, nullable=True)

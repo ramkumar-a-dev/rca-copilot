@@ -4,11 +4,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from rca_copilot.cli import incident_to_dict
-from rca_copilot.db import count_incidents, create_tables, save_incidents
+from rca_copilot.db import async_session, count_incidents, create_tables, save_incidents
 from rca_copilot.incidents import random_incident
+from rca_copilot.retrieval import RetrievedIncident, flatten_events, retrieve_similar
 
 
 @asynccontextmanager
@@ -52,6 +53,22 @@ class DiagnoseResponse(BaseModel):
     reasoning: str
 
 
+class EventIn(BaseModel):
+    """A single log event submitted for retrieval. Extra keys are ignored."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    source: str
+    message: str
+
+
+class SimilarRequest(BaseModel):
+    """A bundle of log events to find similar past incidents for."""
+
+    events: list[EventIn] = Field(min_length=1)
+    k: int = Field(default=5, ge=1, le=50)
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     """Liveness check. Deployment platforms ping this."""
@@ -76,6 +93,20 @@ async def save_incidents_endpoint(request: GenerateRequest) -> dict[str, int]:
 async def incidents_count_endpoint() -> dict[str, int]:
     """Return how many incidents are currently stored in Postgres."""
     return {"count": await count_incidents()}
+
+
+@app.post("/incidents/similar")
+async def find_similar(request: SimilarRequest) -> dict[str, list[RetrievedIncident]]:
+    """Retrieve the stored incidents whose text most overlaps the given events.
+
+    The caller's events are flattened with the same function that indexed the
+    corpus, so query and corpus share one vocabulary. Returns ranked matches;
+    it does not judge whether the top match is good enough — that's /diagnose.
+    """
+    query_text = flatten_events([event.model_dump() for event in request.events])
+    async with async_session() as session:
+        matches = await retrieve_similar(session, query_text, request.k)
+    return {"matches": matches}
 
 
 @app.post("/diagnose")
