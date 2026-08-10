@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from rca_copilot.cli import incident_to_dict
 from rca_copilot.db import async_session, count_incidents, create_tables, save_incidents
+from rca_copilot.diagnosis import Diagnosis, diagnose
 from rca_copilot.incidents import random_incident
 from rca_copilot.retrieval import RetrievedIncident, flatten_events, retrieve_similar
 
@@ -38,21 +39,6 @@ class GenerateResponse(BaseModel):
     count: int
     incidents: list[dict[str, object]]
 
-class DiagnoseRequest(BaseModel):
-    """A bundle of log lines to diagnose."""
-
-    events: list[str] = Field(min_length=1)
-
-
-class DiagnoseResponse(BaseModel):
-    """A proposed root cause with cited evidence."""
-
-    root_cause: str
-    confidence: str
-    evidence: list[str]
-    reasoning: str
-
-
 class EventIn(BaseModel):
     """A single log event submitted for retrieval. Extra keys are ignored."""
 
@@ -60,6 +46,13 @@ class EventIn(BaseModel):
 
     source: str
     message: str
+
+
+class DiagnoseRequest(BaseModel):
+    """Log events to diagnose a root cause for."""
+
+    events: list[EventIn] = Field(min_length=1)
+    k: int = Field(default=5, ge=1, le=50)
 
 
 class SimilarRequest(BaseModel):
@@ -110,11 +103,13 @@ async def find_similar(request: SimilarRequest) -> dict[str, list[RetrievedIncid
 
 
 @app.post("/diagnose")
-def diagnose(request: DiagnoseRequest) -> DiagnoseResponse:
-    """Propose a root cause for a bundle of log events. Not yet implemented."""
-    return DiagnoseResponse(
-        root_cause="insufficient_evidence",
-        confidence="low",
-        evidence=[],
-        reasoning="Diagnosis is not yet implemented. This endpoint returns a stub.",
-    )
+async def diagnose_endpoint(request: DiagnoseRequest) -> Diagnosis:
+    """Diagnose a root cause by reasoning over the most similar past incidents.
+
+    Retrieves the k nearest incidents, then names the majority cause — or
+    abstains with `insufficient_evidence` when the evidence is thin or split.
+    """
+    query_text = flatten_events([event.model_dump() for event in request.events])
+    async with async_session() as session:
+        matches = await retrieve_similar(session, query_text, request.k)
+    return diagnose(matches, request.k)
