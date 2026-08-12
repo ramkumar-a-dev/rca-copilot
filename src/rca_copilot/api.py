@@ -8,8 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from rca_copilot.cli import incident_to_dict
 from rca_copilot.db import async_session, count_incidents, create_tables, save_incidents
-from rca_copilot.diagnosis import Diagnosis, diagnose
+from rca_copilot.diagnosis import Diagnosis, diagnose, diagnose_with_llm
 from rca_copilot.incidents import random_incident
+from rca_copilot.llm import get_llm_client
 from rca_copilot.retrieval import RetrievedIncident, flatten_events, retrieve_similar
 
 
@@ -106,10 +107,15 @@ async def find_similar(request: SimilarRequest) -> dict[str, list[RetrievedIncid
 async def diagnose_endpoint(request: DiagnoseRequest) -> Diagnosis:
     """Diagnose a root cause by reasoning over the most similar past incidents.
 
-    Retrieves the k nearest incidents, then names the majority cause — or
-    abstains with `insufficient_evidence` when the evidence is thin or split.
+    Retrieves the k nearest incidents, then reasons over the evidence with the
+    LLM when an API key is configured — otherwise falls back to the deterministic
+    majority vote. Either way it can abstain with `insufficient_evidence`.
     """
-    query_text = flatten_events([event.model_dump() for event in request.events])
+    events = [event.model_dump() for event in request.events]
+    query_text = flatten_events(events)
     async with async_session() as session:
         matches = await retrieve_similar(session, query_text, request.k)
+    client = get_llm_client()
+    if client is not None:
+        return await diagnose_with_llm(client, events, matches)
     return diagnose(matches, request.k)

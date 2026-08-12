@@ -19,8 +19,9 @@ from sqlalchemy import text
 
 from rca_copilot.cli import incident_to_dict
 from rca_copilot.db import async_session, create_tables, save_incidents
-from rca_copilot.diagnosis import INSUFFICIENT, diagnose
+from rca_copilot.diagnosis import INSUFFICIENT, diagnose, diagnose_with_llm
 from rca_copilot.incidents import random_incident
+from rca_copilot.llm import get_llm_client
 from rca_copilot.retrieval import flatten_events, retrieve_similar
 
 
@@ -65,7 +66,11 @@ def score(outcomes: list[tuple[str, str]]) -> EvalReport:
 
 
 async def run_eval(
-    corpus_size: int = 100, test_size: int = 50, k: int = 5, seed: int = 42
+    corpus_size: int = 100,
+    test_size: int = 50,
+    k: int = 5,
+    seed: int = 42,
+    use_llm: bool = False,
 ) -> EvalReport:
     """Build a corpus + disjoint held-out set, run the pipeline, and score it."""
     random.seed(seed)
@@ -79,14 +84,20 @@ async def run_eval(
     await save_incidents(corpus_size)
 
     # Held-out: the *next* draws — different incidents, never saved to the corpus.
+    client = get_llm_client() if use_llm else None
     outcomes: list[tuple[str, str]] = []
     for _ in range(test_size):
         incident = incident_to_dict(random_incident())
         true = cast(str, incident["root_cause"])
-        query = flatten_events(cast(list[dict[str, Any]], incident["events"]))
+        events = cast(list[dict[str, Any]], incident["events"])
+        query = flatten_events(events)
         async with async_session() as session:
             matches = await retrieve_similar(session, query, k)
-        outcomes.append((true, diagnose(matches, k).root_cause))
+        if client is not None:
+            predicted = (await diagnose_with_llm(client, events, matches)).root_cause
+        else:
+            predicted = diagnose(matches, k).root_cause
+        outcomes.append((true, predicted))
 
     return score(outcomes)
 
@@ -116,8 +127,12 @@ def format_report(report: EvalReport, *, k: int, seed: int) -> str:
 
 
 def main() -> None:
+    import sys
+
+    use_llm = "--llm" in sys.argv[1:]
     k, seed = 5, 42
-    report = asyncio.run(run_eval(k=k, seed=seed))
+    report = asyncio.run(run_eval(k=k, seed=seed, use_llm=use_llm))
+    print(("LLM reasoner" if use_llm else "baseline") + ":")
     print(format_report(report, k=k, seed=seed))
 
 
